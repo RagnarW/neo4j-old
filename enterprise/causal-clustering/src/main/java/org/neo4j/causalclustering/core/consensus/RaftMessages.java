@@ -89,6 +89,7 @@ public interface RaftMessages
     {
         MemberId from();
         Type type();
+        ReplicatedContent content();
         <T, E extends Exception> T dispatch( Handler<T, E> handler ) throws E;
     }
 
@@ -187,6 +188,12 @@ public interface RaftMessages
             }
 
             @Override
+            public ReplicatedContent content()
+            {
+                return null;
+            }
+
+            @Override
             public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
             {
                 return handler.handle( this );
@@ -256,6 +263,12 @@ public interface RaftMessages
                 super( from, Type.VOTE_RESPONSE );
                 this.term = term;
                 this.voteGranted = voteGranted;
+            }
+
+            @Override
+            public ReplicatedContent content()
+            {
+                return null;
             }
 
             @Override
@@ -335,6 +348,12 @@ public interface RaftMessages
             }
 
             @Override
+            public ReplicatedContent content()
+            {
+                return null;
+            }
+
+            @Override
             public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
             {
                 return handler.handle( this );
@@ -404,6 +423,12 @@ public interface RaftMessages
                 super( from, Type.PRE_VOTE_RESPONSE );
                 this.term = term;
                 this.voteGranted = voteGranted;
+            }
+
+            @Override
+            public ReplicatedContent content()
+            {
+                return null;
             }
 
             @Override
@@ -507,6 +532,12 @@ public interface RaftMessages
             }
 
             @Override
+            public ReplicatedContent content()
+            {
+                return null;
+            }
+
+            @Override
             public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
             {
                 return handler.handle( this );
@@ -583,6 +614,12 @@ public interface RaftMessages
             }
 
             @Override
+            public ReplicatedContent content()
+            {
+                return null;
+            }
+
+            @Override
             public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
             {
                 return handler.handle( this );
@@ -655,6 +692,12 @@ public interface RaftMessages
         }
 
         @Override
+        public ReplicatedContent content()
+        {
+            return null;
+        }
+
+        @Override
         public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
         {
             return handler.handle( this );
@@ -710,6 +753,12 @@ public interface RaftMessages
         }
 
         @Override
+        public ReplicatedContent content()
+        {
+            return null;
+        }
+
+        @Override
         public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
         {
             return handler.handle( this );
@@ -742,6 +791,12 @@ public interface RaftMessages
         public long prevIndex()
         {
             return prevIndex;
+        }
+
+        @Override
+        public ReplicatedContent content()
+        {
+            return null;
         }
 
         @Override
@@ -798,6 +853,12 @@ public interface RaftMessages
             }
 
             @Override
+            public ReplicatedContent content()
+            {
+                return null;
+            }
+
+            @Override
             public <T,E extends Exception> T dispatch( Handler<T,E> handler ) throws E
             {
                 return handler.handle( this );
@@ -815,6 +876,12 @@ public interface RaftMessages
             public Heartbeat( MemberId from )
             {
                 super( from, Type.HEARTBEAT_TIMEOUT );
+            }
+
+            @Override
+            public ReplicatedContent content()
+            {
+                return null;
             }
 
             @Override
@@ -897,6 +964,12 @@ public interface RaftMessages
             public void add( ReplicatedContent content )
             {
                 list.add( content );
+            }
+
+            @Override
+            public ReplicatedContent content()
+            {
+                return null;
             }
 
             @Override
@@ -1045,6 +1118,12 @@ public interface RaftMessages
         {
             return format( "{clusterId: %s, message: %s}", clusterId, message() );
         }
+
+        @Override
+        public ReplicatedContent content()
+        {
+            return message.content();
+        }
     }
 
     class ReceivedInstantAwareMessageImpl<RM extends RaftMessage> implements ReceivedInstantAwareMessage<RM>
@@ -1096,6 +1175,12 @@ public interface RaftMessages
         public String toString()
         {
             return format( "{receivedAt: %s, message: %s}", receivedAt, message() );
+        }
+
+        @Override
+        public ReplicatedContent content()
+        {
+            return message.content();
         }
     }
 
@@ -1157,6 +1242,12 @@ public interface RaftMessages
         {
             return format( "{clusterId: %s, receivedAt: %s, message: %s}", clusterId, receivedAt, message() );
         }
+
+        @Override
+        public ReplicatedContent content()
+        {
+            return message.content();
+        }
     }
 
     class PruneRequest extends BaseRaftMessage
@@ -1172,6 +1263,12 @@ public interface RaftMessages
         public long pruneIndex()
         {
             return pruneIndex;
+        }
+
+        @Override
+        public ReplicatedContent content()
+        {
+            return null;
         }
 
         @Override

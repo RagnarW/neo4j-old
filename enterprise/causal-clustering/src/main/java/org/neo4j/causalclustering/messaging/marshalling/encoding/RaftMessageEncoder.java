@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.messaging.marshalling;
+package org.neo4j.causalclustering.messaging.marshalling.encoding;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,20 +25,12 @@ import io.netty.handler.codec.MessageToByteEncoder;
 
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
 import org.neo4j.causalclustering.core.consensus.log.RaftLogEntry;
-import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.NetworkFlushableByteBuf;
 
 public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.ClusterIdAwareMessage>
 {
-    private final ChannelMarshal<ReplicatedContent> marshal;
-
-    public RaftMessageEncoder( ChannelMarshal<ReplicatedContent> marshal )
-    {
-        this.marshal = marshal;
-    }
-
     @Override
     protected synchronized void encode( ChannelHandlerContext ctx,
             RaftMessages.ClusterIdAwareMessage decoratedMessage,
@@ -53,18 +45,16 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
         channel.putInt( message.type().ordinal() );
         memberMarshal.marshal( message.from(), channel );
 
-        message.dispatch( new Handler( marshal, memberMarshal, channel ) );
+        message.dispatch( new Handler(  memberMarshal, channel ) );
     }
 
     private static class Handler implements RaftMessages.Handler<Void, Exception>
     {
-        private final ChannelMarshal<ReplicatedContent> marshal;
         private final MemberId.Marshal memberMarshal;
         private final NetworkFlushableByteBuf channel;
 
-        Handler( ChannelMarshal<ReplicatedContent> marshal, MemberId.Marshal memberMarshal, NetworkFlushableByteBuf channel )
+        Handler( MemberId.Marshal memberMarshal, NetworkFlushableByteBuf channel )
         {
-            this.marshal = marshal;
             this.memberMarshal = memberMarshal;
             this.channel = channel;
         }
@@ -122,7 +112,6 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
             for ( RaftLogEntry raftLogEntry : appendRequest.entries() )
             {
                 channel.putLong( raftLogEntry.term() );
-                marshal.marshal( raftLogEntry.content(), channel );
             }
 
             return null;
@@ -142,8 +131,6 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
         @Override
         public Void handle( RaftMessages.NewEntry.Request newEntryRequest ) throws Exception
         {
-            marshal.marshal( newEntryRequest.content(), channel );
-
             return null;
         }
 

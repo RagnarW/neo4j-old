@@ -22,7 +22,8 @@ package org.neo4j.causalclustering.core.consensus;
 import io.netty.channel.Channel;
 
 import org.neo4j.causalclustering.messaging.CoreReplicatedContentMarshal;
-import org.neo4j.causalclustering.messaging.marshalling.RaftMessageEncoder;
+import org.neo4j.causalclustering.messaging.marshalling.encoding.RaftMessageEncoder;
+import org.neo4j.causalclustering.messaging.marshalling.encoding.ReplicatedContentDispatcher;
 import org.neo4j.causalclustering.protocol.NettyPipelineBuilderFactory;
 import org.neo4j.causalclustering.protocol.Protocol;
 import org.neo4j.causalclustering.protocol.ProtocolInstaller;
@@ -46,7 +47,7 @@ public class RaftProtocolClientInstaller extends ProtocolInstaller<ProtocolInsta
     {
         clientPipelineBuilderFactory.create( channel, log )
                 .addFraming()
-                .add( "raft_encoder", new RaftMessageEncoder( new CoreReplicatedContentMarshal() ) )
+                .add( "raft_encoder", new RaftMessageEncoder( new ReplicatedContentDispatcher(new CoreReplicatedContentMarshal()) ) )
                 .install();
     }
 }

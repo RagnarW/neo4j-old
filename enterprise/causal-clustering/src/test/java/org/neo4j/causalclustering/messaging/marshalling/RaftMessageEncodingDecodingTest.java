@@ -19,16 +19,13 @@
  */
 package org.neo4j.causalclustering.messaging.marshalling;
 
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.ByteBufAllocator;
-import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.UUID;
 
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
@@ -42,12 +39,11 @@ import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
+import org.neo4j.causalclustering.messaging.marshalling.encoding.RaftMessageEncoder;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 public class RaftMessageEncodingDecodingTest
 {
@@ -94,40 +90,11 @@ public class RaftMessageEncodingDecodingTest
     @Test
     public void shouldSerializeHeartbeats() throws Exception
     {
-        // Given
-        Instant now = Instant.now();
-        Clock clock = Clock.fixed( now, ZoneOffset.UTC );
-        RaftMessageEncoder encoder = new RaftMessageEncoder( marshal );
-        RaftMessageDecoder decoder = new RaftMessageDecoder( marshal, clock );
-
-        // Deserialization adds read objects in this list
-        ArrayList<Object> thingsRead = new ArrayList<>( 1 );
-
-        // When
         MemberId sender = new MemberId( UUID.randomUUID() );
-        RaftMessages.ClusterIdAwareMessage<?> message = RaftMessages.ReceivedInstantClusterIdAwareMessage.of( now, clusterId,
-        new RaftMessages.Heartbeat( sender, 1, 2, 3 ) );
-        ChannelHandlerContext ctx = setupContext();
-        ByteBuf buffer = null;
-        try
-        {
-            buffer = ctx.alloc().buffer();
-            encoder.encode( ctx, message, buffer );
+        RaftMessages.Heartbeat heartbeat = new RaftMessages.Heartbeat( sender, 1, 2, 3 );
 
-            // When
-            decoder.decode( null, buffer, thingsRead );
-
-            // Then
-            assertEquals( 1, thingsRead.size() );
-            assertEquals( message, thingsRead.get( 0 ) );
-        }
-        finally
-        {
-            if ( buffer != null )
-            {
-                buffer.release();
-            }
-        }
+        // Then
+        serializeReadBackAndVerifyMessage( heartbeat );
     }
 
     @Test
@@ -161,43 +128,24 @@ public class RaftMessageEncodingDecodingTest
         // Given
         Instant now = Instant.now();
         Clock clock = Clock.fixed( now, ZoneOffset.UTC );
-        RaftMessageEncoder encoder = new RaftMessageEncoder( marshal );
-        RaftMessageDecoder decoder = new RaftMessageDecoder( marshal, clock );
 
-        // Deserialization adds read objects in this list
-        ArrayList<Object> thingsRead = new ArrayList<>( 1 );
+        EmbeddedChannel encoder = new EmbeddedChannel( new RaftMessageEncoder( marshal ) );
+        EmbeddedChannel decoder = new EmbeddedChannel( new RaftMessageDecoder( marshal, clock ) );
 
-        // When
+        // And
         RaftMessages.ClusterIdAwareMessage<?> decoratedMessage =
                 RaftMessages.ReceivedInstantClusterIdAwareMessage.of( now, clusterId, message );
-        ChannelHandlerContext ctx = setupContext();
-        ByteBuf buffer = null;
-        try
+
+        // When
+        encoder.writeOutbound( decoratedMessage );
+        Object t;
+        while ( (t = encoder.readOutbound()) != null )
         {
-            buffer = ctx.alloc().buffer();
-            encoder.encode( ctx, decoratedMessage, buffer );
-
-            // When
-            decoder.decode( null, buffer, thingsRead );
-
-            // Then
-            assertEquals( 1, thingsRead.size() );
-            assertEquals( decoratedMessage, thingsRead.get( 0 ) );
+            decoder.writeInbound( t );
         }
-        finally
-        {
-            if ( buffer != null )
-            {
-                buffer.release();
-            }
-        }
-    }
 
-    private static ChannelHandlerContext setupContext()
-    {
-        ChannelHandlerContext context = mock( ChannelHandlerContext.class );
-        when( context.alloc() ).thenReturn( ByteBufAllocator.DEFAULT );
-        return context;
+        // Then
+        assertEquals( decoratedMessage, decoder.readInbound() );
     }
 
     /*

@@ -20,20 +20,25 @@
 package org.neo4j.causalclustering.core.replication;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.UUID;
 
-import org.neo4j.causalclustering.messaging.CoreReplicatedContentMarshal;
 import org.neo4j.causalclustering.core.replication.session.GlobalSession;
 import org.neo4j.causalclustering.core.replication.session.LocalOperationId;
-import org.neo4j.causalclustering.messaging.EndOfStreamException;
 import org.neo4j.causalclustering.identity.MemberId;
+import org.neo4j.causalclustering.messaging.CoreReplicatedContentMarshal;
+import org.neo4j.causalclustering.messaging.EndOfStreamException;
+import org.neo4j.causalclustering.messaging.ReplicatedContents;
+import org.neo4j.causalclustering.messaging.marshalling.ReplicatedContentHandler;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
 /**
  * A uniquely identifiable operation.
  */
-public class  DistributedOperation implements ReplicatedContent
+public class DistributedOperation implements ReplicatedContent, ReplicatedContents
 {
     private final ReplicatedContent content;
     private final GlobalSession globalSession;
@@ -73,7 +78,14 @@ public class  DistributedOperation implements ReplicatedContent
         return content.size();
     }
 
-    public void serialize( WritableChannel channel ) throws IOException
+    @Override
+    public Collection<ReplicatedContent> replicatedContents()
+    {
+        return Collections.singletonList( content );
+    }
+
+    @Override
+    public void encode( WritableChannel channel, ReplicatedContentHandler replicatedContentHandler ) throws IOException
     {
         channel.putLong( globalSession().sessionId().getMostSignificantBits() );
         channel.putLong( globalSession().sessionId().getLeastSignificantBits() );
@@ -82,7 +94,12 @@ public class  DistributedOperation implements ReplicatedContent
         channel.putLong( operationId.localSessionId() );
         channel.putLong( operationId.sequenceNumber() );
 
-        new CoreReplicatedContentMarshal().marshal( content, channel );
+        replicatedContentHandler.handle( content );
+    }
+
+    public void serialize( WritableChannel channel ) throws IOException
+    {
+        encode( channel, content -> new CoreReplicatedContentMarshal().marshal( content, channel ) );
     }
 
     public static DistributedOperation deserialize( ReadableChannel channel ) throws IOException, EndOfStreamException

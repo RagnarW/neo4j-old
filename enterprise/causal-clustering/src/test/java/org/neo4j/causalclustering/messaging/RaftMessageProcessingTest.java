@@ -37,7 +37,7 @@ import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.marshalling.ChannelMarshal;
 import org.neo4j.causalclustering.messaging.marshalling.RaftMessageDecoder;
-import org.neo4j.causalclustering.messaging.marshalling.RaftMessageEncoder;
+import org.neo4j.causalclustering.messaging.marshalling.encoding.RaftMessageEncoder;
 import org.neo4j.storageengine.api.ReadPastEndException;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
