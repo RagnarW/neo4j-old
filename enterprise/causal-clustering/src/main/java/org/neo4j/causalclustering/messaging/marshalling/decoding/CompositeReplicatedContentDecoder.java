@@ -17,26 +17,22 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling.decoding;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.ByteToMessageDecoder;
+
+import java.util.List;
+
+import org.neo4j.causalclustering.core.replication.CompositeReplicatedContent;
+import org.neo4j.causalclustering.messaging.NetworkReadableClosableChannelNetty4;
+
+public class CompositeReplicatedContentDecoder extends ByteToMessageDecoder
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    @Override
+    protected void decode( ChannelHandlerContext ctx, ByteBuf in, List<Object> out ) throws Exception
     {
-        return false;
-    }
-
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
+        out.add( CompositeReplicatedContent.MARSHAL.unmarshal( new NetworkReadableClosableChannelNetty4( in ) ) );
     }
 }

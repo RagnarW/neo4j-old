@@ -17,26 +17,27 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling.decoding;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.MessageToMessageDecoder;
+
+import java.util.List;
+
+import org.neo4j.causalclustering.core.state.machines.dummy.DummyRequestChunk;
+import org.neo4j.causalclustering.core.state.machines.tx.ReplicatedTransactionChunk;
+
+public class DummyRequestDecoder extends MessageToMessageDecoder<DummyRequestChunk>
 {
-    ReplicatedContent UNDEFINED = new Undefined();
+    private DummyRequestBuilder transactionBuilder = new DummyRequestBuilder();
 
-    default boolean hasSize()
+    @Override
+    protected void decode( ChannelHandlerContext ctx, DummyRequestChunk msg, List<Object> out ) throws Exception
     {
-        return false;
-    }
-
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
+        if ( transactionBuilder.addChunk( msg ) )
+        {
+            out.add( transactionBuilder.create() );
+            transactionBuilder = new DummyRequestBuilder();
+        }
     }
 }

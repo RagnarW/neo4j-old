@@ -17,26 +17,20 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling.encoding;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.MessageToByteEncoder;
+
+import org.neo4j.causalclustering.core.replication.ChunkedReplicatedContent;
+import org.neo4j.causalclustering.core.state.machines.tx.ReplicatedTransactionChunk;
+
+public class ChunkedReplicatedContentEncoder extends MessageToByteEncoder<ChunkedReplicatedContent>
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    @Override
+    protected void encode( ChannelHandlerContext ctx, ChunkedReplicatedContent msg, ByteBuf out ) throws Exception
     {
-        return false;
-    }
 
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
     }
 }

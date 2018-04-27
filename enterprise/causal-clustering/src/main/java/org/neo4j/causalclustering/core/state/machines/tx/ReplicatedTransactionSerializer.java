@@ -19,10 +19,12 @@
  */
 package org.neo4j.causalclustering.core.state.machines.tx;
 
-import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 
 import java.io.IOException;
 
+import org.neo4j.causalclustering.messaging.marshalling.decoding.ReplicateTransactionBuilder;
+import org.neo4j.causalclustering.messaging.marshalling.decoding.ReplicatedTransactionDecoder;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
@@ -34,33 +36,52 @@ public class ReplicatedTransactionSerializer
 
     public static void marshal( ReplicatedTransaction transaction, WritableChannel channel ) throws IOException
     {
-        byte[] txBytes = transaction.getTxBytes();
-        channel.putInt( txBytes.length );
-        channel.put( txBytes, txBytes.length );
+        ReplicatedTransactionChunk replicatedTransactionChunk;
+        ReplicatedTransactionChunk.Marshal encoder = ReplicatedTransactionChunk.encoder();
+        ByteBufAllocator allocator = ByteBufAllocator.DEFAULT;
+        ReplicatedTransactionReader reader = transaction.getReader();
+        try
+        {
+            do
+            {
+                replicatedTransactionChunk = reader.readChunk( allocator );
+                encoder.encode( replicatedTransactionChunk, channel );
+            }
+            while ( !replicatedTransactionChunk.isLast() );
+        }
+        catch ( Exception e )
+        {
+            throw new RuntimeException( e );
+        }
     }
 
     public static ReplicatedTransaction unmarshal( ReadableChannel channel ) throws IOException
     {
-        int txBytesLength = channel.getInt();
-        byte[] txBytes = new  byte[txBytesLength];
-        channel.get( txBytes, txBytesLength );
+        ReplicatedTransactionChunk.UnMarshal<ReplicatedTransactionChunk> decoder = ReplicatedTransactionChunk.decoder(ReplicatedTransactionChunk.initiator());
 
-        return new ReplicatedTransaction( txBytes );
+        ReplicateTransactionBuilder transactionBuilder = ReplicatedTransactionDecoder.builder();
+        while ( true )
+        {
+            if ( transactionBuilder.addChunk( decoder.decode( channel ) ) )
+            {
+                return transactionBuilder.create();
+            }
+        }
     }
 
-    public static void marshal( ReplicatedTransaction transaction, ByteBuf buffer )
-    {
-        byte[] txBytes = transaction.getTxBytes();
-        buffer.writeInt( txBytes.length );
-        buffer.writeBytes( txBytes );
-    }
-
-    public static ReplicatedTransaction unmarshal( ByteBuf buffer )
-    {
-        int txBytesLength = buffer.readInt();
-        byte[] txBytes = new  byte[txBytesLength];
-        buffer.readBytes( txBytes );
-
-        return new ReplicatedTransaction( txBytes );
-    }
+//    public static void marshal( ReplicatedTransaction transaction, ByteBuf buffer )
+//    {
+//        byte[] txBytes = transaction.getByteLenth();
+//        buffer.writeInt( txBytes.length );
+//        buffer.writeBytes( txBytes );
+//    }
+//
+//    public static ReplicatedTransaction unmarshal( ByteBuf buffer )
+//    {
+//        int txBytesLength = buffer.readInt();
+//        byte[] txBytes = new  byte[txBytesLength];
+//        buffer.readBytes( txBytes );
+//
+//        return new ReplicatedTransaction( txBytes );
+//    }
 }

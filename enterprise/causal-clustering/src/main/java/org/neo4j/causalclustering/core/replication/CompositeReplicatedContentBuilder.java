@@ -19,24 +19,11 @@
  */
 package org.neo4j.causalclustering.core.replication;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+public interface CompositeReplicatedContentBuilder<R extends CompositeReplicatedContent>
 {
-    ReplicatedContent UNDEFINED = new Undefined();
+    void add( ReplicatedContent replicatedContent );
 
-    default boolean hasSize()
-    {
-        return false;
-    }
+    boolean isFull();
 
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
-    }
+    R create();
 }

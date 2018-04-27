@@ -17,26 +17,12 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+public enum RaftMessageComponentState
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
-    {
-        return false;
-    }
-
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
-    }
+    CONTENT,
+    COMPOSITE_HEADER,
+    CHUNKED_CONTENT,
+    HEADER
 }

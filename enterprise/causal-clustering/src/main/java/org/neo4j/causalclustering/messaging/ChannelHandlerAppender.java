@@ -17,26 +17,14 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelPipeline;
+
+public interface ChannelHandlerAppender
 {
-    ReplicatedContent UNDEFINED = new Undefined();
+    void addTo( ChannelPipeline channelPipeline );
 
-    default boolean hasSize()
-    {
-        return false;
-    }
-
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
-    }
+    ChannelHandler[] handlers();
 }

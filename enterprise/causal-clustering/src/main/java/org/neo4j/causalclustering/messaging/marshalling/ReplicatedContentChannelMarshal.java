@@ -17,26 +17,22 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import java.io.IOException;
+
+import org.neo4j.causalclustering.core.replication.ReplicatedContent;
+import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
+import org.neo4j.storageengine.api.WritableChannel;
+
+public abstract class ReplicatedContentChannelMarshal extends SafeChannelMarshal<ReplicatedContent>
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    @Override
+    public final void marshal( ReplicatedContent replicatedContent, WritableChannel channel ) throws IOException
     {
-        return false;
+        channel.putInt( RaftMessageComponentState.CONTENT.ordinal() );
+        marshal0( replicatedContent, channel );
     }
 
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
-    }
+    protected abstract void marshal0( ReplicatedContent replicatedContent, WritableChannel channel ) throws IOException;
 }

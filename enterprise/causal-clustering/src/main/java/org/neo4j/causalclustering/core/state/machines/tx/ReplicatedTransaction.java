@@ -19,15 +19,31 @@
  */
 package org.neo4j.causalclustering.core.state.machines.tx;
 
+import io.netty.handler.stream.ChunkedInput;
+
+import java.io.ByteArrayInputStream;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.function.Consumer;
 
+import org.neo4j.causalclustering.core.replication.ChunkedStreamProvider;
+import org.neo4j.causalclustering.core.replication.CompositeReplicatedContent;
+import org.neo4j.causalclustering.core.replication.CompositeReplicatedContentTypes;
+import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.core.state.CommandDispatcher;
 import org.neo4j.causalclustering.core.state.Result;
+import org.neo4j.helpers.collection.Iterators;
 
-public class ReplicatedTransaction implements CoreReplicatedContent
+public class ReplicatedTransaction implements CoreReplicatedContent, ChunkedStreamProvider<ReplicatedTransactionChunk>
 {
-    private final byte[] txBytes;
+    private final int length;
+    private final byte[] bytes;
+
+    public ReplicatedTransaction( byte[] bytes )
+    {
+        this.bytes = bytes;
+        this.length = bytes.length;
+    }
 
     @Override
     public boolean hasSize()
@@ -38,23 +54,23 @@ public class ReplicatedTransaction implements CoreReplicatedContent
     @Override
     public long size()
     {
-        return txBytes.length;
-    }
-
-    public ReplicatedTransaction( byte[] txBytes )
-    {
-        this.txBytes = txBytes;
-    }
-
-    public byte[] getTxBytes()
-    {
-        return txBytes;
+        return length;
     }
 
     @Override
     public void dispatch( CommandDispatcher commandDispatcher, long commandIndex, Consumer<Result> callback )
     {
         commandDispatcher.dispatch( this, commandIndex, callback );
+    }
+
+    public ReplicatedTransactionReader getReader()
+    {
+        return new ReplicatedTransactionReader( new ByteArrayInputStream( bytes ), length );
+    }
+
+    public byte[] getTxBytes()
+    {
+        return bytes;
     }
 
     @Override
@@ -69,12 +85,18 @@ public class ReplicatedTransaction implements CoreReplicatedContent
             return false;
         }
         ReplicatedTransaction that = (ReplicatedTransaction) o;
-        return Arrays.equals( txBytes, that.txBytes );
+        return Arrays.equals( bytes, that.bytes );
     }
 
     @Override
     public int hashCode()
     {
-        return Arrays.hashCode( txBytes );
+        return Arrays.hashCode( bytes );
+    }
+
+    @Override
+    public ChunkedInput<ReplicatedTransactionChunk> getChunkedStream()
+    {
+        return getReader();
     }
 }

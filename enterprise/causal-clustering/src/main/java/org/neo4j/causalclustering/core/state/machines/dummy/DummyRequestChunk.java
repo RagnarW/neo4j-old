@@ -17,26 +17,29 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.core.state.machines.dummy;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.buffer.ByteBuf;
+
+import java.util.function.BiFunction;
+
+import org.neo4j.causalclustering.core.state.machines.tx.CompleteAwareByteBufChunk;
+
+public class DummyRequestChunk extends CompleteAwareByteBufChunk
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    public DummyRequestChunk( ByteBuf byteBuf, boolean isLast, int length )
     {
-        return false;
+        super( byteBuf, isLast, length );
     }
 
-    default long size()
+    public static Initiator<DummyRequestChunk> initiator()
     {
-        throw new UnsupportedOperationException();
+        return DummyRequestChunk::new;
     }
 
-    class Undefined implements ReplicatedContent
+    @Override
+    public Type type()
     {
+        return Type.DUMMY_REQUEST_CHUNK;
     }
 }

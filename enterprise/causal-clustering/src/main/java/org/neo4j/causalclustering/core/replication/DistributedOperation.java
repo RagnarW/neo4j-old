@@ -20,40 +20,44 @@
 package org.neo4j.causalclustering.core.replication;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.UUID;
 
-import org.neo4j.causalclustering.messaging.CoreReplicatedContentMarshal;
 import org.neo4j.causalclustering.core.replication.session.GlobalSession;
 import org.neo4j.causalclustering.core.replication.session.LocalOperationId;
-import org.neo4j.causalclustering.messaging.EndOfStreamException;
 import org.neo4j.causalclustering.identity.MemberId;
+import org.neo4j.causalclustering.messaging.EndOfStreamException;
+import org.neo4j.helpers.collection.Iterators;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
 /**
  * A uniquely identifiable operation.
  */
-public class  DistributedOperation implements ReplicatedContent
+public class DistributedOperation implements CompositeReplicatedContent
 {
     private final ReplicatedContent content;
-    private final GlobalSession globalSession;
-    private final LocalOperationId operationId;
+    private final DistributedContent distributedContent;
 
     public DistributedOperation( ReplicatedContent content, GlobalSession globalSession, LocalOperationId operationId )
     {
-        this.content = content;
-        this.globalSession = globalSession;
-        this.operationId = operationId;
+        this( content, new DistributedContent( globalSession, operationId ) );
+    }
+
+    public DistributedOperation( ReplicatedContent replicatedContent, DistributedContent distributedContent )
+    {
+        this.content = replicatedContent;
+        this.distributedContent = distributedContent;
     }
 
     public GlobalSession globalSession()
     {
-        return globalSession;
+        return distributedContent.globalSession;
     }
 
     public LocalOperationId operationId()
     {
-        return operationId;
+        return distributedContent.operationId;
     }
 
     public ReplicatedContent content()
@@ -73,40 +77,104 @@ public class  DistributedOperation implements ReplicatedContent
         return content.size();
     }
 
-    public void serialize( WritableChannel channel ) throws IOException
-    {
-        channel.putLong( globalSession().sessionId().getMostSignificantBits() );
-        channel.putLong( globalSession().sessionId().getLeastSignificantBits() );
-        new MemberId.Marshal().marshal( globalSession().owner(), channel );
-
-        channel.putLong( operationId.localSessionId() );
-        channel.putLong( operationId.sequenceNumber() );
-
-        new CoreReplicatedContentMarshal().marshal( content, channel );
-    }
-
-    public static DistributedOperation deserialize( ReadableChannel channel ) throws IOException, EndOfStreamException
-    {
-        long mostSigBits = channel.getLong();
-        long leastSigBits = channel.getLong();
-        MemberId owner = new MemberId.Marshal().unmarshal( channel );
-        GlobalSession globalSession = new GlobalSession( new UUID( mostSigBits, leastSigBits ), owner );
-
-        long localSessionId = channel.getLong();
-        long sequenceNumber = channel.getLong();
-        LocalOperationId localOperationId = new LocalOperationId( localSessionId, sequenceNumber );
-
-        ReplicatedContent content = new CoreReplicatedContentMarshal().unmarshal( channel );
-        return new DistributedOperation( content, globalSession, localOperationId );
-    }
-
     @Override
     public String toString()
     {
         return "DistributedOperation{" +
                "content=" + content +
-               ", globalSession=" + globalSession +
-               ", operationId=" + operationId +
+               ", globalSession=" + globalSession() +
+               ", operationId=" + operationId() +
                '}';
+    }
+
+    @Override
+    public CompositeReplicatedContentHeader compositeContentHeader()
+    {
+        return new CompositeReplicatedContentHeader( 1, CompositeReplicatedContentTypes.DISTRIBUTED_OPERATION );
+    }
+
+    @Override
+    public Iterator<ReplicatedContent> iterator()
+    {
+        return Iterators.iterator( content, distributedContent );
+    }
+
+    public static CompositeReplicatedContentBuilder<DistributedOperation> builder()
+    {
+        return new Builder();
+    }
+
+    public DistributedContent distributedContent()
+    {
+        return distributedContent;
+    }
+
+    public static class DistributedContent implements ReplicatedContent
+    {
+        private final GlobalSession globalSession;
+        private final LocalOperationId operationId;
+
+        DistributedContent( GlobalSession globalSession, LocalOperationId operationId )
+        {
+            this.globalSession = globalSession;
+            this.operationId = operationId;
+        }
+
+        public void serialize( WritableChannel channel ) throws IOException
+        {
+            channel.putLong( globalSession.sessionId().getMostSignificantBits() );
+            channel.putLong( globalSession.sessionId().getLeastSignificantBits() );
+            new MemberId.Marshal().marshal( globalSession.owner(), channel );
+
+            channel.putLong( operationId.localSessionId() );
+            channel.putLong( operationId.sequenceNumber() );
+        }
+
+        public static DistributedContent deserialize( ReadableChannel channel ) throws IOException, EndOfStreamException
+        {
+            long mostSigBits = channel.getLong();
+            long leastSigBits = channel.getLong();
+            MemberId owner = new MemberId.Marshal().unmarshal( channel );
+            GlobalSession globalSession = new GlobalSession( new UUID( mostSigBits, leastSigBits ), owner );
+
+            long localSessionId = channel.getLong();
+            long sequenceNumber = channel.getLong();
+            LocalOperationId localOperationId = new LocalOperationId( localSessionId, sequenceNumber );
+
+            return new DistributedContent( globalSession, localOperationId );
+        }
+    }
+
+    private static class Builder implements CompositeReplicatedContentBuilder<DistributedOperation>
+    {
+        private DistributedContent distributedContent;
+        private ReplicatedContent replicatedContent;
+
+        @Override
+        public void add( ReplicatedContent replicatedContent )
+        {
+            if ( replicatedContent instanceof DistributedContent )
+            {
+                assert distributedContent == null;
+                distributedContent = (DistributedContent) replicatedContent;
+            }
+            else
+            {
+                assert this.replicatedContent == null;
+                this.replicatedContent = replicatedContent;
+            }
+        }
+
+        @Override
+        public boolean isFull()
+        {
+            return this.replicatedContent != null && this.distributedContent != null;
+        }
+
+        @Override
+        public DistributedOperation create()
+        {
+            return new DistributedOperation( replicatedContent, distributedContent.globalSession, distributedContent.operationId );
+        }
     }
 }

@@ -36,8 +36,8 @@ import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.marshalling.ChannelMarshal;
-import org.neo4j.causalclustering.messaging.marshalling.RaftMessageDecoder;
-import org.neo4j.causalclustering.messaging.marshalling.RaftMessageEncoder;
+import org.neo4j.causalclustering.messaging.marshalling.decoding.RaftMessageHeaderDecoder;
+import org.neo4j.causalclustering.messaging.marshalling.encoding.ReplicatedContentDistributor;
 import org.neo4j.storageengine.api.ReadPastEndException;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
@@ -95,7 +95,7 @@ public class RaftMessageProcessingTest
     @Before
     public void setup()
     {
-        channel = new EmbeddedChannel( new RaftMessageEncoder( serializer ), new RaftMessageDecoder( serializer, Clock.systemUTC() ) );
+        channel = new EmbeddedChannel( new ReplicatedContentDistributor( ), new RaftMessageHeaderDecoder( Clock.systemUTC() ) );
     }
 
     @Test
@@ -138,7 +138,7 @@ public class RaftMessageProcessingTest
         RaftLogEntry logEntry = new RaftLogEntry( 1, ReplicatedInteger.valueOf( 1 ) );
         RaftMessages.AppendEntries.Request request =
                 new RaftMessages.AppendEntries.Request(
-                        member, 1, 1, 99, new RaftLogEntry[] { logEntry }, 1 );
+                        member, 1, 1, 99, ReplicatedContent.UNDEFINED, 1 );
 
         // when
         channel.writeOutbound( request );

@@ -19,24 +19,9 @@
  */
 package org.neo4j.causalclustering.core.replication;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.handler.stream.ChunkedInput;
+
+public interface ChunkedStreamProvider<R extends ChunkedReplicatedContent>
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
-    {
-        return false;
-    }
-
-    default long size()
-    {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
-    }
+    ChunkedInput<R> getChunkedStream();
 }

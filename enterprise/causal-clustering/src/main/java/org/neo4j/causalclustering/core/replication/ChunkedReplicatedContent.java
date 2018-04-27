@@ -19,24 +19,26 @@
  */
 package org.neo4j.causalclustering.core.replication;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.buffer.ByteBuf;
+
+import java.io.IOException;
+
+import org.neo4j.causalclustering.messaging.marshalling.RaftMessageComponentState;
+import org.neo4j.storageengine.api.WritableChannel;
+
+public interface ChunkedReplicatedContent
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    static void encodeHeader( ChunkedReplicatedContent content, ByteBuf out )
     {
-        return false;
+        out.writeInt( RaftMessageComponentState.CHUNKED_CONTENT.ordinal() );
+        out.writeInt( content.type().ordinal() );
     }
 
-    default long size()
+    enum Type
     {
-        throw new UnsupportedOperationException();
+        TRANSACTION_CHUNK,
+        DUMMY_REQUEST_CHUNK
     }
 
-    class Undefined implements ReplicatedContent
-    {
-    }
+    Type type();
 }

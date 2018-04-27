@@ -19,16 +19,15 @@
  */
 package org.neo4j.causalclustering.messaging.marshalling;
 
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.Test;
 
 import java.io.IOException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.UUID;
 
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
@@ -39,13 +38,16 @@ import org.neo4j.causalclustering.core.consensus.roles.AppendEntriesResponseBuil
 import org.neo4j.causalclustering.core.consensus.vote.VoteRequestBuilder;
 import org.neo4j.causalclustering.core.consensus.vote.VoteResponseBuilder;
 import org.neo4j.causalclustering.core.replication.ReplicatedContent;
+import org.neo4j.causalclustering.core.state.machines.tx.ReplicatedTransaction;
 import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
+import org.neo4j.causalclustering.messaging.marshalling.decoding.RaftMessageComposingDecoder;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -56,6 +58,7 @@ public class RaftMessageEncodingDecodingTest
     @Test
     public void shouldSerializeAppendRequestWithMultipleEntries() throws Exception
     {
+        // given
         MemberId sender = new MemberId( UUID.randomUUID() );
         RaftMessages.AppendEntries.Request request = new AppendEntriesRequestBuilder()
                 .from( sender )
@@ -64,31 +67,62 @@ public class RaftMessageEncodingDecodingTest
                 .logEntry( new RaftLogEntry( 1, ReplicatedInteger.valueOf( 2 ) ) )
                 .logEntry( new RaftLogEntry( 1, ReplicatedInteger.valueOf( 3 ) ) )
                 .logEntry( new RaftLogEntry( 1, ReplicatedInteger.valueOf( 4 ) ) ).build();
-        serializeReadBackAndVerifyMessage( request );
+
+        // when
+        RaftMessages.RaftMessage given = serializeReadBackAndVerifyMessage( request );
+
+        // then
+        assertEquals( given, request );
     }
 
     @Test
     public void shouldSerializeAppendRequestWithNoEntries() throws Exception
     {
+        // given
         MemberId sender = new MemberId( UUID.randomUUID() );
         RaftMessages.AppendEntries.Request request = new AppendEntriesRequestBuilder()
                 .from( sender )
                 .leaderCommit( 2 )
                 .leaderTerm( 4 )
                 .build();
-        serializeReadBackAndVerifyMessage( request );
+
+        // when
+        RaftMessages.RaftMessage given = serializeReadBackAndVerifyMessage( request );
+
+        //then
+        assertEquals( given, request );
     }
 
     @Test
     public void shouldSerializeAppendResponse() throws Exception
     {
+        //given
         MemberId sender = new MemberId( UUID.randomUUID() );
         RaftMessages.AppendEntries.Response request = new AppendEntriesResponseBuilder()
                 .from( sender )
                 .success()
                 .matchIndex( 12 )
                 .build();
-        serializeReadBackAndVerifyMessage( request );
+
+        // when
+        RaftMessages.RaftMessage given = serializeReadBackAndVerifyMessage( request );
+
+        //then
+        assertEquals( given, request );
+    }
+
+    @Test
+    public void shouldSerializeNewEntryRequest() throws Exception
+    {
+        //given
+        MemberId sender = new MemberId( UUID.randomUUID() );
+        RaftMessages.NewEntry.Request request = new RaftMessages.NewEntry.Request( sender, ReplicatedInteger.valueOf( 10 ) );
+
+        // when
+        RaftMessages.RaftMessage given = serializeReadBackAndVerifyMessage( request );
+
+        //then
+        assertEquals( given, request );
     }
 
     @Test
@@ -97,37 +131,17 @@ public class RaftMessageEncodingDecodingTest
         // Given
         Instant now = Instant.now();
         Clock clock = Clock.fixed( now, ZoneOffset.UTC );
-        RaftMessageEncoder encoder = new RaftMessageEncoder( marshal );
-        RaftMessageDecoder decoder = new RaftMessageDecoder( marshal, clock );
-
-        // Deserialization adds read objects in this list
-        ArrayList<Object> thingsRead = new ArrayList<>( 1 );
 
         // When
         MemberId sender = new MemberId( UUID.randomUUID() );
-        RaftMessages.ClusterIdAwareMessage<?> message = RaftMessages.ReceivedInstantClusterIdAwareMessage.of( now, clusterId,
-        new RaftMessages.Heartbeat( sender, 1, 2, 3 ) );
-        ChannelHandlerContext ctx = setupContext();
-        ByteBuf buffer = null;
-        try
-        {
-            buffer = ctx.alloc().buffer();
-            encoder.encode( ctx, message, buffer );
+        RaftMessages.Heartbeat request = new RaftMessages.Heartbeat( sender, 1, 2, 3 );
 
-            // When
-            decoder.decode( null, buffer, thingsRead );
+        // when
+        RaftMessages.RaftMessage given = serializeReadBackAndVerifyMessage( request );
 
-            // Then
-            assertEquals( 1, thingsRead.size() );
-            assertEquals( message, thingsRead.get( 0 ) );
-        }
-        finally
-        {
-            if ( buffer != null )
-            {
-                buffer.release();
-            }
-        }
+        //then
+        assertEquals( given, request );
+
     }
 
     @Test
@@ -156,40 +170,41 @@ public class RaftMessageEncodingDecodingTest
         serializeReadBackAndVerifyMessage( request );
     }
 
-    private void serializeReadBackAndVerifyMessage( RaftMessages.RaftMessage message ) throws Exception
+    private RaftMessages.RaftMessage serializeReadBackAndVerifyMessage( RaftMessages.RaftMessage message ) throws Exception
     {
         // Given
         Instant now = Instant.now();
         Clock clock = Clock.fixed( now, ZoneOffset.UTC );
-        RaftMessageEncoder encoder = new RaftMessageEncoder( marshal );
-        RaftMessageDecoder decoder = new RaftMessageDecoder( marshal, clock );
+        RaftMessageCompleteEncoder encoder = new RaftMessageCompleteEncoder( marshal );
+        RaftMessageCompleteDecoder decoder = new RaftMessageCompleteDecoder( new RaftMessageComposingDecoder(), clock, marshal );
 
-        // Deserialization adds read objects in this list
-        ArrayList<Object> thingsRead = new ArrayList<>( 1 );
+        EmbeddedChannel encoderChannel = new EmbeddedChannel();
+        EmbeddedChannel decoderChannel = new EmbeddedChannel();
+
+        encoder.addTo( encoderChannel.pipeline() );
+        decoder.addTo( decoderChannel.pipeline() );
 
         // When
-        RaftMessages.ClusterIdAwareMessage<?> decoratedMessage =
+        RaftMessages.ClusterIdAwareMessage decoratedMessage =
                 RaftMessages.ReceivedInstantClusterIdAwareMessage.of( now, clusterId, message );
-        ChannelHandlerContext ctx = setupContext();
-        ByteBuf buffer = null;
         try
         {
-            buffer = ctx.alloc().buffer();
-            encoder.encode( ctx, decoratedMessage, buffer );
+            encoderChannel.writeOutbound( decoratedMessage );
 
             // When
-            decoder.decode( null, buffer, thingsRead );
-
-            // Then
-            assertEquals( 1, thingsRead.size() );
-            assertEquals( decoratedMessage, thingsRead.get( 0 ) );
+            Object outbound;
+            while ( (outbound = encoderChannel.readOutbound()) != null )
+            {
+                decoderChannel.writeInbound( outbound );
+            }
+            RaftMessages.ClusterIdAwareMessage readInbound = decoderChannel.readInbound();
+            assertNull( encoderChannel.readInbound() );
+            return readInbound.message();
         }
         finally
         {
-            if ( buffer != null )
-            {
-                buffer.release();
-            }
+            encoderChannel.close();
+            decoderChannel.close();
         }
     }
 
@@ -205,7 +220,7 @@ public class RaftMessageEncodingDecodingTest
      * assume that there is only a single entry in the stream, which allows for asserting no remaining bytes once the
      * first entry is read from the buffer.
      */
-    private static final ChannelMarshal<ReplicatedContent> marshal = new SafeChannelMarshal<ReplicatedContent>()
+    private static final SafeChannelMarshal<ReplicatedContent> marshal = new SafeChannelMarshal<ReplicatedContent>()
     {
         @Override
         public void marshal( ReplicatedContent content, WritableChannel channel ) throws IOException
@@ -214,6 +229,11 @@ public class RaftMessageEncodingDecodingTest
             {
                 channel.put( (byte) 1 );
                 channel.putInt( ((ReplicatedInteger) content).get() );
+            }
+            else if ( content instanceof RaftLogEntry.Term )
+            {
+                channel.put( (byte) 2 );
+                RaftLogEntry.Term.marshal( (RaftLogEntry.Term) content, channel );
             }
             else
             {
@@ -230,6 +250,9 @@ public class RaftMessageEncodingDecodingTest
             {
                 case 1:
                     content = ReplicatedInteger.valueOf( channel.getInt() );
+                    break;
+                case 2:
+                    content = RaftLogEntry.Term.unmarshal( channel );
                     break;
                 default:
                     throw new IllegalArgumentException( String.format( "Unknown content type 0x%x", type ) );

@@ -17,35 +17,28 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.messaging.marshalling;
+package org.neo4j.causalclustering.messaging.marshalling.encoding;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
 
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
-import org.neo4j.causalclustering.core.consensus.log.RaftLogEntry;
-import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.NetworkFlushableByteBuf;
+import org.neo4j.causalclustering.messaging.marshalling.RaftMessageComponentState;
+import org.neo4j.causalclustering.messaging.marshalling.RaftMessageHeader;
 
-public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.ClusterIdAwareMessage>
+public class RaftMessageHeaderEncoder extends MessageToByteEncoder<RaftMessageHeader>
 {
-    private final ChannelMarshal<ReplicatedContent> marshal;
-
-    public RaftMessageEncoder( ChannelMarshal<ReplicatedContent> marshal )
-    {
-        this.marshal = marshal;
-    }
-
     @Override
-    protected synchronized void encode( ChannelHandlerContext ctx,
-            RaftMessages.ClusterIdAwareMessage decoratedMessage,
-            ByteBuf out ) throws Exception
+    public synchronized void encode( ChannelHandlerContext ctx, RaftMessageHeader messageHeader, ByteBuf out ) throws Exception
     {
-        RaftMessages.RaftMessage message = decoratedMessage.message();
-        ClusterId clusterId = decoratedMessage.clusterId();
+        out.writeInt( RaftMessageComponentState.HEADER.ordinal() );
+        RaftMessages.ClusterIdAwareMessage clusterIdAwareMessage = messageHeader.message();
+        RaftMessages.RaftMessage message = clusterIdAwareMessage.message();
+        ClusterId clusterId = clusterIdAwareMessage.clusterId();
         MemberId.Marshal memberMarshal = new MemberId.Marshal();
 
         NetworkFlushableByteBuf channel = new NetworkFlushableByteBuf( out );
@@ -53,18 +46,16 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
         channel.putInt( message.type().ordinal() );
         memberMarshal.marshal( message.from(), channel );
 
-        message.dispatch( new Handler( marshal, memberMarshal, channel ) );
+        message.dispatch( new Handler( memberMarshal, channel ) );
     }
 
     private static class Handler implements RaftMessages.Handler<Void, Exception>
     {
-        private final ChannelMarshal<ReplicatedContent> marshal;
         private final MemberId.Marshal memberMarshal;
         private final NetworkFlushableByteBuf channel;
 
-        Handler( ChannelMarshal<ReplicatedContent> marshal, MemberId.Marshal memberMarshal, NetworkFlushableByteBuf channel )
+        Handler( MemberId.Marshal memberMarshal, NetworkFlushableByteBuf channel )
         {
-            this.marshal = marshal;
             this.memberMarshal = memberMarshal;
             this.channel = channel;
         }
@@ -117,14 +108,7 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
             channel.putLong( appendRequest.prevLogTerm() );
             channel.putLong( appendRequest.leaderCommit() );
 
-            channel.putLong( appendRequest.entries().length );
-
-            for ( RaftLogEntry raftLogEntry : appendRequest.entries() )
-            {
-                channel.putLong( raftLogEntry.term() );
-                marshal.marshal( raftLogEntry.content(), channel );
-            }
-
+            //TODO ENTRIES IS REPLICATED CONTENT
             return null;
         }
 
@@ -142,8 +126,6 @@ public class RaftMessageEncoder extends MessageToByteEncoder<RaftMessages.Cluste
         @Override
         public Void handle( RaftMessages.NewEntry.Request newEntryRequest ) throws Exception
         {
-            marshal.marshal( newEntryRequest.content(), channel );
-
             return null;
         }
 

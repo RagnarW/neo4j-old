@@ -17,26 +17,21 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.messaging.marshalling;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import org.neo4j.causalclustering.core.consensus.RaftMessages;
+
+public class RaftMessageHeader
 {
-    ReplicatedContent UNDEFINED = new Undefined();
+    private final RaftMessages.ClusterIdAwareMessage msg;
 
-    default boolean hasSize()
+    public RaftMessageHeader( RaftMessages.ClusterIdAwareMessage msg )
     {
-        return false;
+        this.msg = msg;
     }
 
-    default long size()
+    public RaftMessages.ClusterIdAwareMessage message()
     {
-        throw new UnsupportedOperationException();
-    }
-
-    class Undefined implements ReplicatedContent
-    {
+        return msg;
     }
 }

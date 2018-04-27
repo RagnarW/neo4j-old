@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Objects;
 
 import org.neo4j.causalclustering.core.consensus.log.RaftLogEntry;
+import org.neo4j.causalclustering.core.consensus.log.RaftLogEntryEntries;
 import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
@@ -89,6 +90,8 @@ public interface RaftMessages
     {
         MemberId from();
         Type type();
+
+        boolean hasContent();
         <T, E extends Exception> T dispatch( Handler<T, E> handler ) throws E;
     }
 
@@ -164,7 +167,7 @@ public interface RaftMessages
 
     interface Vote
     {
-        class Request extends BaseRaftMessage implements AnyVote.Request
+        class Request extends ContentFreeRaftMessage  implements AnyVote.Request
         {
             private long term;
             private MemberId candidate;
@@ -246,7 +249,7 @@ public interface RaftMessages
             }
         }
 
-        class Response extends BaseRaftMessage implements AnyVote.Response
+        class Response extends ContentFreeRaftMessage implements AnyVote.Response
         {
             private long term;
             private boolean voteGranted;
@@ -312,7 +315,7 @@ public interface RaftMessages
 
     interface PreVote
     {
-        class Request extends BaseRaftMessage implements AnyVote.Request
+        class Request extends ContentFreeRaftMessage implements AnyVote.Request
         {
             private long term;
             private MemberId candidate;
@@ -394,7 +397,7 @@ public interface RaftMessages
             }
         }
 
-        class Response extends BaseRaftMessage implements AnyVote.Response
+        class Response extends ContentFreeRaftMessage implements AnyVote.Response
         {
             private long term;
             private boolean voteGranted;
@@ -460,25 +463,28 @@ public interface RaftMessages
 
     interface AppendEntries
     {
-        class Request extends BaseRaftMessage
+        class Request extends ContentIncludedRaftMessage
         {
             private long leaderTerm;
             private long prevLogIndex;
             private long prevLogTerm;
-            private RaftLogEntry[] entries;
             private long leaderCommit;
 
-            public Request( MemberId from, long leaderTerm, long prevLogIndex, long prevLogTerm, RaftLogEntry[] entries, long leaderCommit )
+            public Request( MemberId from, long leaderTerm, long prevLogIndex, long prevLogTerm, ReplicatedContent replicatedContent, long leaderCommit )
             {
-                super( from, Type.APPEND_ENTRIES_REQUEST );
-                Objects.requireNonNull( entries );
+                super( from, Type.APPEND_ENTRIES_REQUEST, replicatedContent );
+//                Objects.requireNonNull( entries );
                 assert !((prevLogIndex == -1 && prevLogTerm != -1) || (prevLogTerm == -1 && prevLogIndex != -1)) :
                         format( "prevLogIndex was %d and prevLogTerm was %d", prevLogIndex, prevLogTerm );
-                this.entries = entries;
                 this.leaderTerm = leaderTerm;
                 this.prevLogIndex = prevLogIndex;
                 this.prevLogTerm = prevLogTerm;
                 this.leaderCommit = leaderCommit;
+            }
+
+            public Request( MemberId from, long leaderTerm, long prevLogIndex, long prevLogTerm, RaftLogEntry[] entries, long leaderCommit )
+            {
+                this( from, leaderTerm, prevLogIndex, prevLogTerm, new RaftLogEntryEntries( entries ), leaderCommit );
             }
 
             public long leaderTerm()
@@ -498,7 +504,7 @@ public interface RaftMessages
 
             public RaftLogEntry[] entries()
             {
-                return entries;
+                return ((RaftLogEntryEntries) content()).entries();
             }
 
             public long leaderCommit()
@@ -528,25 +534,25 @@ public interface RaftMessages
                         Objects.equals( prevLogIndex, request.prevLogIndex ) &&
                         Objects.equals( prevLogTerm, request.prevLogTerm ) &&
                         Objects.equals( leaderCommit, request.leaderCommit ) &&
-                        Arrays.equals( entries, request.entries );
+                        content().equals( request.content() );
             }
 
             @Override
             public int hashCode()
             {
-                return Objects.hash( leaderTerm, prevLogIndex, prevLogTerm, Arrays.hashCode( entries ), leaderCommit );
+                return Objects.hash( leaderTerm, prevLogIndex, prevLogTerm, Arrays.hashCode( entries() ), leaderCommit );
             }
 
             @Override
             public String toString()
             {
                 return format( "AppendEntries.Request from %s {leaderTerm=%d, prevLogIndex=%d, " +
-                                "prevLogTerm=%d, entry=%s, leaderCommit=%d}",
-                        from, leaderTerm, prevLogIndex, prevLogTerm, Arrays.toString( entries ), leaderCommit );
+                                "prevLogTerm=%d, entry=%s, leaderCommit=%d}", from(), leaderTerm, prevLogIndex, prevLogTerm, Arrays.toString( entries() ),
+                        leaderCommit );
             }
         }
 
-        class Response extends BaseRaftMessage
+        class Response extends ContentFreeRaftMessage
         {
             private long term;
             private boolean success;
@@ -625,7 +631,7 @@ public interface RaftMessages
         }
     }
 
-    class Heartbeat extends BaseRaftMessage
+    class Heartbeat extends ContentFreeRaftMessage
     {
         private long leaderTerm;
         private long commitIndex;
@@ -701,7 +707,7 @@ public interface RaftMessages
         }
     }
 
-    class HeartbeatResponse extends BaseRaftMessage
+    class HeartbeatResponse extends ContentFreeRaftMessage
     {
 
         public HeartbeatResponse( MemberId from )
@@ -722,7 +728,7 @@ public interface RaftMessages
         }
     }
 
-    class LogCompactionInfo extends BaseRaftMessage
+    class LogCompactionInfo extends ContentFreeRaftMessage
     {
         private long leaderTerm;
         private long prevIndex;
@@ -790,7 +796,7 @@ public interface RaftMessages
 
     interface Timeout
     {
-        class Election extends BaseRaftMessage
+        class Election extends ContentFreeRaftMessage
         {
             public Election( MemberId from )
             {
@@ -810,7 +816,7 @@ public interface RaftMessages
             }
         }
 
-        class Heartbeat extends BaseRaftMessage
+        class Heartbeat extends ContentFreeRaftMessage
         {
             public Heartbeat( MemberId from )
             {
@@ -833,14 +839,11 @@ public interface RaftMessages
 
     interface NewEntry
     {
-        class Request extends BaseRaftMessage
+        class Request extends ContentIncludedRaftMessage
         {
-            private ReplicatedContent content;
-
             public Request( MemberId from, ReplicatedContent content )
             {
-                super( from, Type.NEW_ENTRY_REQUEST );
-                this.content = content;
+                super( from, Type.NEW_ENTRY_REQUEST, content );
             }
 
             @Override
@@ -852,7 +855,7 @@ public interface RaftMessages
             @Override
             public String toString()
             {
-                return format( "NewEntry.Request from %s {content=%s}", from, content );
+                return format( "NewEntry.Request from %s {content=%s}", from(), content() );
             }
 
             @Override
@@ -869,22 +872,17 @@ public interface RaftMessages
 
                 Request request = (Request) o;
 
-                return !(content != null ? !content.equals( request.content ) : request.content != null);
+                return !(content() != null ? !content().equals( request.content() ) : request.content() != null);
             }
 
             @Override
             public int hashCode()
             {
-                return content != null ? content.hashCode() : 0;
-            }
-
-            public ReplicatedContent content()
-            {
-                return content;
+                return content() != null ? content().hashCode() : 0;
             }
         }
 
-        class BatchRequest extends BaseRaftMessage
+        class BatchRequest extends ContentFreeRaftMessage
         {
             private List<ReplicatedContent> list;
 
@@ -959,6 +957,12 @@ public interface RaftMessages
         default Type type()
         {
             return message().type();
+        }
+
+        @Override
+        default boolean hasContent()
+        {
+            return message().hasContent();
         }
 
         @Override
@@ -1159,7 +1163,7 @@ public interface RaftMessages
         }
     }
 
-    class PruneRequest extends BaseRaftMessage
+    class PruneRequest extends ContentFreeRaftMessage
     {
         private final long pruneIndex;
 
@@ -1206,15 +1210,71 @@ public interface RaftMessages
         }
     }
 
-    abstract class BaseRaftMessage implements RaftMessage
+    abstract class ContentIncludedRaftMessage implements RaftMessage
+    {
+        private final MemberId from;
+        private final Type type;
+        private ReplicatedContent replicatedContent;
+
+        public ContentIncludedRaftMessage( MemberId from, Type type, ReplicatedContent replicatedContent )
+        {
+            this.from = from;
+            this.type = type;
+            this.replicatedContent = replicatedContent;
+        }
+
+        @Override
+        public boolean hasContent()
+        {
+            return true;
+        }
+
+        @Override
+        public MemberId from()
+        {
+            return from;
+        }
+
+        @Override
+        public Type type()
+        {
+            return type;
+        }
+
+        public ReplicatedContent content()
+        {
+            return replicatedContent;
+        }
+
+        public void replaceContent( ReplicatedContent replicatedContent )
+        {
+            // TODO - This is temporary solution
+            if ( this.replicatedContent instanceof ReplicatedContent.Undefined )
+            {
+                this.replicatedContent = replicatedContent;
+            }
+            else
+            {
+                throw new IllegalArgumentException( "Cannot replace defined content" );
+            }
+        }
+    }
+
+    abstract class ContentFreeRaftMessage implements RaftMessage
     {
         protected final MemberId from;
         private final Type type;
 
-        BaseRaftMessage( MemberId from, Type type )
+        ContentFreeRaftMessage( MemberId from, Type type )
         {
             this.from = from;
             this.type = type;
+        }
+
+        @Override
+        public boolean hasContent()
+        {
+            return false;
         }
 
         @Override
@@ -1240,7 +1300,7 @@ public interface RaftMessages
             {
                 return false;
             }
-            BaseRaftMessage that = (BaseRaftMessage) o;
+            ContentFreeRaftMessage that = (ContentFreeRaftMessage) o;
             return Objects.equals( from, that.from ) && type == that.type;
         }
 

@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.messaging.marshalling;
+package org.neo4j.causalclustering.messaging.marshalling.decoding;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
@@ -28,12 +28,12 @@ import java.time.Clock;
 import java.util.List;
 
 import org.neo4j.causalclustering.core.consensus.RaftMessages;
-import org.neo4j.causalclustering.core.consensus.log.RaftLogEntry;
 import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.identity.ClusterId;
 import org.neo4j.causalclustering.identity.MemberId;
 import org.neo4j.causalclustering.messaging.EndOfStreamException;
 import org.neo4j.causalclustering.messaging.NetworkReadableClosableChannelNetty4;
+import org.neo4j.causalclustering.messaging.marshalling.RaftMessageHeader;
 import org.neo4j.storageengine.api.ReadableChannel;
 
 import static org.neo4j.causalclustering.core.consensus.RaftMessages.Type.APPEND_ENTRIES_REQUEST;
@@ -47,19 +47,17 @@ import static org.neo4j.causalclustering.core.consensus.RaftMessages.Type.PRE_VO
 import static org.neo4j.causalclustering.core.consensus.RaftMessages.Type.VOTE_REQUEST;
 import static org.neo4j.causalclustering.core.consensus.RaftMessages.Type.VOTE_RESPONSE;
 
-public class RaftMessageDecoder extends ByteToMessageDecoder
+public class RaftMessageHeaderDecoder extends ByteToMessageDecoder
 {
-    private final ChannelMarshal<ReplicatedContent> marshal;
     private final Clock clock;
 
-    public RaftMessageDecoder( ChannelMarshal<ReplicatedContent> marshal, Clock clock )
+    public RaftMessageHeaderDecoder( Clock clock )
     {
-        this.marshal = marshal;
         this.clock = clock;
     }
 
     @Override
-    protected void decode( ChannelHandlerContext ctx, ByteBuf buffer, List<Object> list ) throws Exception
+    public void decode( ChannelHandlerContext ctx, ByteBuf buffer, List<Object> list ) throws Exception
     {
         ReadableChannel channel = new NetworkReadableClosableChannelNetty4( buffer );
         ClusterId clusterId = ClusterId.Marshal.INSTANCE.unmarshal( channel );
@@ -111,20 +109,9 @@ public class RaftMessageDecoder extends ByteToMessageDecoder
             long term = channel.getLong();
             long prevLogIndex = channel.getLong();
             long prevLogTerm = channel.getLong();
-
             long leaderCommit = channel.getLong();
-            long count = channel.getLong();
 
-            RaftLogEntry[] entries = new RaftLogEntry[(int) count];
-            for ( int i = 0; i < count; i++ )
-            {
-                long entryTerm = channel.getLong();
-                final ReplicatedContent content = marshal.unmarshal( channel );
-                entries[i] = new RaftLogEntry( entryTerm, content );
-            }
-
-            result = new RaftMessages.AppendEntries.Request( from, term, prevLogIndex, prevLogTerm, entries,
-                    leaderCommit );
+            result = new RaftMessages.AppendEntries.Request( from, term, prevLogIndex, prevLogTerm, ReplicatedContent.UNDEFINED, leaderCommit );
         }
         else if ( messageType.equals( APPEND_ENTRIES_RESPONSE ) )
         {
@@ -137,9 +124,7 @@ public class RaftMessageDecoder extends ByteToMessageDecoder
         }
         else if ( messageType.equals( NEW_ENTRY_REQUEST ) )
         {
-            ReplicatedContent content = marshal.unmarshal( channel );
-
-            result = new RaftMessages.NewEntry.Request( from, content );
+            result = new RaftMessages.NewEntry.Request( from, ReplicatedContent.UNDEFINED );
         }
         else if ( messageType.equals( HEARTBEAT ) )
         {
@@ -165,7 +150,7 @@ public class RaftMessageDecoder extends ByteToMessageDecoder
             throw new IllegalArgumentException( "Unknown message type" );
         }
 
-        list.add( RaftMessages.ReceivedInstantClusterIdAwareMessage.of( clock.instant(), clusterId, result ) );
+        list.add( new RaftMessageHeader( RaftMessages.ReceivedInstantClusterIdAwareMessage.of( clock.instant(), clusterId, result ) ) );
     }
 
     private MemberId retrieveMember( ReadableChannel buffer ) throws IOException, EndOfStreamException

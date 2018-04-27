@@ -59,6 +59,7 @@ public class RaftMessageApplier implements LifecycleMessageHandler<RaftMessages.
         try
         {
             ConsensusOutcome outcome = raftMachine.handle( wrappedMessage.message() );
+
             if ( outcome.needsFreshSnapshot() )
             {
                 Optional<JobScheduler.JobHandle> downloadJob = downloadService.scheduleDownload( catchupAddressProvider );
@@ -74,7 +75,7 @@ public class RaftMessageApplier implements LifecycleMessageHandler<RaftMessages.
         }
         catch ( Throwable e )
         {
-            log.error( "Error handling message", e );
+            log.error( String.format( "Error handling message [%s]", wrappedMessage ), e );
             raftMachine.panic();
             localDatabase.panic( e );
         }

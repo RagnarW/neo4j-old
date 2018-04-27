@@ -22,15 +22,16 @@ package org.neo4j.causalclustering.messaging;
 import java.io.IOException;
 
 import org.neo4j.causalclustering.core.consensus.NewLeaderBarrier;
+import org.neo4j.causalclustering.core.consensus.log.RaftLogEntry;
 import org.neo4j.causalclustering.core.consensus.membership.MemberIdSet;
 import org.neo4j.causalclustering.core.consensus.membership.MemberIdSetSerializer;
 import org.neo4j.causalclustering.core.replication.DistributedOperation;
 import org.neo4j.causalclustering.core.replication.ReplicatedContent;
+import org.neo4j.causalclustering.core.state.machines.dummy.DummyRequest;
 import org.neo4j.causalclustering.core.state.machines.id.ReplicatedIdAllocationRequest;
 import org.neo4j.causalclustering.core.state.machines.id.ReplicatedIdAllocationRequestSerializer;
 import org.neo4j.causalclustering.core.state.machines.locks.ReplicatedLockTokenRequest;
 import org.neo4j.causalclustering.core.state.machines.locks.ReplicatedLockTokenSerializer;
-import org.neo4j.causalclustering.core.state.machines.dummy.DummyRequest;
 import org.neo4j.causalclustering.core.state.machines.token.ReplicatedTokenRequest;
 import org.neo4j.causalclustering.core.state.machines.token.ReplicatedTokenRequestSerializer;
 import org.neo4j.causalclustering.core.state.machines.tx.ReplicatedTransaction;
@@ -49,11 +50,18 @@ public class CoreReplicatedContentMarshal extends SafeChannelMarshal<ReplicatedC
     private static final byte LOCK_TOKEN_REQUEST = 6;
     private static final byte DISTRIBUTED_OPERATION = 7;
     private static final byte DUMMY_REQUEST = 8;
+    private static final byte TERM = 9;
+    private static final byte DISTRIBUTED_CONTENT = 10;
 
     @Override
     public void marshal( ReplicatedContent content, WritableChannel channel ) throws IOException
     {
-        if ( content instanceof ReplicatedTransaction )
+        if ( content instanceof RaftLogEntry.Term )
+        {
+            channel.put( TERM );
+            RaftLogEntry.Term.marshal( (RaftLogEntry.Term) content, channel);
+        }
+        else if ( content instanceof ReplicatedTransaction )
         {
             channel.put( TX_CONTENT_TYPE );
             ReplicatedTransactionSerializer.marshal( (ReplicatedTransaction) content, channel );
@@ -82,15 +90,21 @@ public class CoreReplicatedContentMarshal extends SafeChannelMarshal<ReplicatedC
             channel.put( LOCK_TOKEN_REQUEST );
             ReplicatedLockTokenSerializer.marshal( (ReplicatedLockTokenRequest) content, channel );
         }
-        else if ( content instanceof DistributedOperation )
+        else if ( content instanceof DistributedOperation.DistributedContent )
         {
-            channel.put( DISTRIBUTED_OPERATION );
-            ((DistributedOperation) content).serialize( channel );
+            channel.put( DISTRIBUTED_CONTENT );
+            ((DistributedOperation.DistributedContent) content).serialize( channel );
         }
         else if ( content instanceof DummyRequest )
         {
             channel.put( DUMMY_REQUEST );
             DummyRequest.Marshal.INSTANCE.marshal( (DummyRequest) content, channel );
+        }
+        else if ( content instanceof DistributedOperation )
+        {
+            channel.put( DISTRIBUTED_OPERATION );
+            marshal( ((DistributedOperation) content).distributedContent(), channel );
+            marshal( ((DistributedOperation) content).content(), channel );
         }
         else
         {
@@ -105,6 +119,9 @@ public class CoreReplicatedContentMarshal extends SafeChannelMarshal<ReplicatedC
         final ReplicatedContent content;
         switch ( type )
         {
+            case TERM:
+                content = RaftLogEntry.Term.unmarshal(channel);
+                break;
             case TX_CONTENT_TYPE:
                 content = ReplicatedTransactionSerializer.unmarshal( channel );
                 break;
@@ -123,12 +140,20 @@ public class CoreReplicatedContentMarshal extends SafeChannelMarshal<ReplicatedC
             case LOCK_TOKEN_REQUEST:
                 content = ReplicatedLockTokenSerializer.unmarshal( channel );
                 break;
-            case DISTRIBUTED_OPERATION:
-                content = DistributedOperation.deserialize( channel );
+            case DISTRIBUTED_CONTENT:
+                content = DistributedOperation.DistributedContent.deserialize( channel );
                 break;
             case DUMMY_REQUEST:
                 content = DummyRequest.Marshal.INSTANCE.unmarshal( channel );
                 break;
+            case DISTRIBUTED_OPERATION:
+            {
+                DistributedOperation.DistributedContent distributedContent = (DistributedOperation.DistributedContent) unmarshal0( channel );
+                ReplicatedContent replicatedContent = unmarshal0( channel );
+                content = new DistributedOperation( replicatedContent, distributedContent );
+
+                break;
+            }
             default:
                 throw new IllegalArgumentException( String.format( "Unknown content type 0x%x", type ) );
         }

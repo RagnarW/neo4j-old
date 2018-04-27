@@ -19,24 +19,34 @@
  */
 package org.neo4j.causalclustering.core.state.machines.dummy;
 
+import io.netty.handler.stream.ChunkedInput;
+
 import java.io.IOException;
 import java.util.function.Consumer;
 
+import org.neo4j.causalclustering.core.replication.ChunkedStreamProvider;
+import org.neo4j.causalclustering.core.replication.CompositeReplicatedContent;
+import org.neo4j.causalclustering.core.replication.ReplicatedContent;
 import org.neo4j.causalclustering.core.state.CommandDispatcher;
 import org.neo4j.causalclustering.core.state.Result;
 import org.neo4j.causalclustering.core.state.machines.tx.CoreReplicatedContent;
+import org.neo4j.causalclustering.core.state.machines.tx.ReplicatedTransactionChunk;
 import org.neo4j.causalclustering.core.state.storage.SafeChannelMarshal;
-import org.neo4j.causalclustering.messaging.EndOfStreamException;
 import org.neo4j.storageengine.api.ReadableChannel;
 import org.neo4j.storageengine.api.WritableChannel;
 
-public class DummyRequest implements CoreReplicatedContent
+public class DummyRequest implements CoreReplicatedContent, ChunkedStreamProvider<DummyRequestChunk>
 {
     private final byte[] data;
 
     public DummyRequest( byte[] data )
     {
         this.data = data;
+    }
+
+    public ChunkedInput<DummyRequestChunk> getChunkedStream()
+    {
+        return new DummyRequestChunkedInput( data );
     }
 
     @Override

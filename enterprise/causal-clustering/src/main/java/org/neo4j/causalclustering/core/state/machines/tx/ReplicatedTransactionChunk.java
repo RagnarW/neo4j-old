@@ -17,26 +17,25 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
-package org.neo4j.causalclustering.core.replication;
+package org.neo4j.causalclustering.core.state.machines.tx;
 
-/**
- * Marker interface for types that are
- */
-public interface ReplicatedContent
+import io.netty.buffer.ByteBuf;
+
+public class ReplicatedTransactionChunk extends CompleteAwareByteBufChunk
 {
-    ReplicatedContent UNDEFINED = new Undefined();
-
-    default boolean hasSize()
+    public ReplicatedTransactionChunk( ByteBuf byteBuf, boolean lastChunk, int totalLength )
     {
-        return false;
+        super( byteBuf, lastChunk, totalLength );
     }
 
-    default long size()
+    public static Initiator<ReplicatedTransactionChunk> initiator()
     {
-        throw new UnsupportedOperationException();
+        return ReplicatedTransactionChunk::new;
     }
 
-    class Undefined implements ReplicatedContent
+    @Override
+    public Type type()
     {
+        return Type.TRANSACTION_CHUNK;
     }
 }
